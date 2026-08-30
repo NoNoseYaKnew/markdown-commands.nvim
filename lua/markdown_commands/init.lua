@@ -40,6 +40,7 @@ function M.pick(opts)
   end
   return require("markdown_commands.picker").open(entries, {
     telescope = opts.telescope,
+    context = vim.tbl_deep_extend("force", vim.deepcopy(config.values.context), opts.context or {}),
     run = M.run,
   })
 end

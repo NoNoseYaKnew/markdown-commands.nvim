@@ -174,4 +174,146 @@ h.run({
     h.eq(false, ok)
     h.eq(true, tostring(message):find("git ls-files failed", 1, true) ~= nil)
   end,
+
+  ["scan extracts rich documentation and command context"] = function()
+    local root = h.tempdir()
+    h.write(root .. "/docs/development.md", {
+      "# Development",
+      "## API",
+      "Starts the API with hot reload.",
+      "PostgreSQL and Redis must already be running.",
+      "",
+      "```bash",
+      "# Launch on the documented port",
+      'PORT=8080 uv run server --environment "$ENVIRONMENT" --reload',
+      "docker run -it app:<version>",
+      "sudo rm -rf build --force",
+      "```",
+      "",
+      "Wait for the health check to pass.",
+      "Then open the application in a browser.",
+      "",
+      "## Next section",
+    })
+
+    local entries = require("markdown_commands").scan({
+      root = root,
+      context = {
+        before = true,
+        after = true,
+        comments = true,
+        variables = true,
+        signals = true,
+        deduplicate = true,
+      },
+    })
+    h.eq(1, #entries)
+    local entry = entries[1]
+    h.eq("Development › API › PostgreSQL and Redis must already be running", entry.name)
+    h.eq({
+      "Starts the API with hot reload.",
+      "PostgreSQL and Redis must already be running.",
+    }, entry.context.before)
+    h.eq({
+      "Wait for the health check to pass.",
+      "Then open the application in a browser.",
+    }, entry.context.after)
+    h.eq({ "Launch on the documented port" }, entry.context.comments)
+    h.eq({ "PORT" }, entry.context.inline_environment)
+    h.eq({ "ENVIRONMENT" }, entry.context.referenced_environment)
+    h.eq({ "version" }, entry.context.placeholders)
+    h.eq({ "destructive", "force", "interactive", "long-running", "sudo" }, entry.context.signals)
+    h.eq("uv", entry.executable)
+    h.eq(4, entry.line_count)
+    h.eq(1, #entry.sources)
+  end,
+
+  ["scan groups identical commands and retains every source"] = function()
+    local root = h.tempdir()
+    h.write(root .. "/README.md", { "# Root", "Root instructions.", "```sh", "npm test", "```" })
+    h.write(root .. "/docs/testing.md", { "# Testing", "Detailed testing instructions.", "```sh", "npm test", "```" })
+    h.write(root .. "/z-bash.md", { "# Bash", "```bash", "npm test", "```" })
+
+    local entries = require("markdown_commands").scan({
+      root = root,
+      context = { deduplicate = true },
+    })
+
+    h.eq(2, #entries)
+    h.eq(2, #entries[1].sources)
+    h.eq("README.md", entries[1].sources[1].relative_path)
+    h.eq("docs/testing.md", entries[1].sources[2].relative_path)
+    h.eq({ "Root instructions." }, entries[1].sources[1].context.before)
+    h.eq({ "Detailed testing instructions." }, entries[1].sources[2].context.before)
+  end,
+
+  ["scan omits disabled optional context"] = function()
+    local root = h.tempdir()
+    h.write(root .. "/README.md", {
+      "Helpful prose.",
+      "```sh",
+      "# comment",
+      "PORT=1 echo $VALUE --force",
+      "```",
+      "After prose.",
+    })
+    local entries = require("markdown_commands").scan({
+      root = root,
+      context = { before = false, after = false, comments = false, variables = false, signals = false },
+    })
+
+    h.eq({}, entries[1].context)
+    h.eq(false, entries[1].name:find("Helpful prose", 1, true) ~= nil)
+  end,
+
+  ["scan extracts shell-aware comments and variable references"] = function()
+    local root = h.tempdir()
+    h.write(root .. "/README.md", {
+      "```bash",
+      "#comment without space",
+      "echo '# not a comment sudo rm --force' \"$EXPANDED\" '${IGNORED}' \\$ESCAPED # inline explanation",
+      "echo ok;# $HIDDEN sudo rm --force",
+      'echo "${WITH_DEFAULT:-x}" ${ARRAY[0]}',
+      "```",
+    })
+    local entries = require("markdown_commands").scan({
+      root = root,
+      context = { comments = true, variables = true, signals = true },
+    })
+    h.eq(1, #entries)
+    h.eq({ "comment without space", "inline explanation", "$HIDDEN sudo rm --force" }, entries[1].context.comments)
+    h.eq({ "ARRAY", "EXPANDED", "WITH_DEFAULT" }, entries[1].context.referenced_environment)
+    h.eq({}, entries[1].context.signals)
+  end,
+
+  ["scan reports a command only when a shell prefix can be parsed conservatively"] = function()
+    local root = h.tempdir()
+    h.write(root .. "/README.md", {
+      "```bash",
+      'env PORT="hello world" sudo -u app command uv run server',
+      "```",
+      "```bash",
+      "if ready; then run-server; fi",
+      "```",
+    })
+    local entries = require("markdown_commands").scan({ root = root })
+    h.eq("uv", entries[1].executable)
+    h.eq(nil, entries[2].executable)
+  end,
+
+  ["scan does not cross Markdown structural boundaries for context"] = function()
+    local root = h.tempdir()
+    h.write(root .. "/README.md", {
+      "Unrelated paragraph.",
+      "---",
+      "```sh",
+      "echo bounded",
+      "```",
+      "| column |",
+      "| --- |",
+    })
+    local entry = require("markdown_commands").scan({ root = root })[1]
+    h.eq(nil, entry.context.before)
+    h.eq(nil, entry.context.after)
+  end,
 })
