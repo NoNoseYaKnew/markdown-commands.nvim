@@ -1,0 +1,30 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        neovim: [v0.11.4, stable]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rhysd/action-setup-vim@v1
+        with:
+          version: ${{ matrix.neovim }}
+          neovim: true
+      - name: Install test dependencies
+        run: |
+          mkdir -p .deps
+          git clone --depth 1 https://github.com/nvim-lua/plenary.nvim .deps/plenary.nvim
+          git clone --depth 1 https://github.com/nvim-telescope/telescope.nvim .deps/telescope.nvim
+          git clone --depth 1 https://github.com/voldikss/vim-floaterm.git .deps/vim-floaterm
+      - name: Run tests
+        run: bash scripts/test.sh
