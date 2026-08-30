@@ -9,8 +9,9 @@ The plugin treats fenced `sh`, `bash`, `shell`, and `zsh` blocks as discoverable
 - Recursively scans configurable Markdown files and directories.
 - Honors `.gitignore` in Git repositories.
 - Excludes dependency and build directories by default.
-- Uses nearby headings and prose to name commands.
-- Shows each command, source location, and working directory in Telescope.
+- Uses heading breadcrumbs and complete surrounding prose to name and explain commands.
+- Shows configurable source metadata, script comments, inputs, placeholders, and operational signals in Telescope.
+- Can group identical commands while retaining every Markdown source.
 - Preserves multiline shell blocks exactly.
 - Runs with Neovim's built-in terminal job support—Telescope is the only plugin dependency.
 - Opens the source, copies the command, or edits it in a scratch buffer before running.
@@ -129,6 +130,16 @@ require("markdown_commands").setup({
 
   root_markers = { ".git" },
 
+  context = {
+    before = true,       -- paragraph preceding the shell fence
+    after = true,        -- paragraph following the shell fence
+    comments = true,     -- comments extracted from the script
+    metadata = true,     -- language, executable, lines, sources, cwd
+    variables = false,   -- environment references and <placeholders>
+    signals = false,     -- descriptive operational signals; not a safety verdict
+    deduplicate = false, -- group identical command bodies and retain all sources
+  },
+
   terminal = {
     -- Native Neovim is the default. Use "floaterm" to reuse vim-floaterm.
     provider = "native",
@@ -148,6 +159,34 @@ require("markdown_commands").setup({
   },
 })
 ```
+
+### Rich command context
+
+The preview can include adjacent Markdown text before and after a fence, full-line and inline shell comments, source locations, working directory, a conservative best-effort command name, line count, possible environment references, angle-bracket placeholders, and descriptive operational signals. Every category is independently configurable through `context`.
+
+`variables`, `signals`, and `deduplicate` default to `false` because they add heuristic or grouping behavior that some users may not want. Enable the complete context model with:
+
+```lua
+require("markdown_commands").setup({
+  context = {
+    before = true,
+    after = true,
+    comments = true,
+    metadata = true,
+    variables = true,
+    signals = true,
+    deduplicate = true,
+  },
+})
+```
+
+Variable metadata reports names only; inline assignment values are never copied into metadata. Reference detection ignores comments, single-quoted text, and escaped dollar signs, and understands common braced forms such as `${VAR:-default}`. The raw command preview remains exact because reviewing the actual command is the plugin's purpose.
+
+The command-name heuristic recognizes common assignment, `env`, `sudo`, and shell-wrapper prefixes. It omits the field when the first line begins with control syntax rather than pretending to identify an executable.
+
+Signals currently identify characteristics such as `sudo`, destructive command words, force flags, interactive terminal flags, and likely long-running commands. Quoted text and shell comments are excluded. Signals are search and review hints—not a determination that a command is safe or unsafe.
+
+When deduplication is enabled, exact command bodies using the same fence language are grouped. Every source, source-specific name, and surrounding context is retained in the preview. Source-opening actions use the first discovered source.
 
 ### Terminal providers
 

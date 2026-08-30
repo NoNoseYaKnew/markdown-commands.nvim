@@ -11,6 +11,15 @@ local defaults = {
     languages = { "sh", "bash", "shell", "zsh" },
   },
   root_markers = { ".git" },
+  context = {
+    before = true,
+    after = true,
+    comments = true,
+    metadata = true,
+    variables = false,
+    signals = false,
+    deduplicate = false,
+  },
   terminal = {
     provider = "native",
     direction = "horizontal",
